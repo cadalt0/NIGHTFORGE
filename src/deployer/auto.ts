@@ -1,0 +1,260 @@
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+import chalk from 'chalk';
+import ora from 'ora';
+import { WalletManager } from '../wallet/manager.js';
+import { ConfigLoader } from '../config/loader.js';
+import { FileSystem } from '../utils/file-system.js';
+import { Logger } from '../utils/logger.js';
+import { Deployer } from './index.js';
+import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
+
+interface AutoDeployOptions {
+  network: string;
+}
+
+export class AutoDeployer {
+  static async deploy(contractName: string, options: AutoDeployOptions): Promise<void> {
+    console.log('\n' + chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
+    console.log(chalk.bold.cyan('  🚀 Nightforge - Auto Deployment Mode'));
+    console.log(chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
+    console.log();
+
+    const projectRoot = getProjectRoot();
+    const walletPath = path.join(projectRoot, 'wallet.json');
+
+    try {
+      // Step 1: Ensure wallet exists
+      let seed: string;
+      let address: string;
+
+      if (!FileSystem.exists(walletPath)) {
+        await this.createWallet(walletPath, options.network);
+      }
+
+      const walletData = FileSystem.readJSON<{ seed?: string; address?: string; network?: string }>(walletPath);
+      if (!walletData.seed || !walletData.address) {
+        throw new Error('Invalid wallet.json file');
+      }
+
+      seed = walletData.seed;
+      address = walletData.address;
+
+      console.log(chalk.green('✓') + ' Wallet loaded: ' + chalk.cyan(address));
+      console.log();
+
+      // Step 2: Wait for tNight funds
+      await this.waitForFunds(seed, address, options.network);
+
+      // Step 3: Convert to DUST
+      await this.convertToDust(seed, options.network);
+
+      // Step 4: Wait for proof server
+      await this.waitForProofServer(projectRoot);
+
+      // Step 5: Deploy contract
+      console.log();
+      console.log(chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
+      console.log(chalk.bold.cyan('  📦 Starting Contract Deployment'));
+      console.log(chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
+      console.log();
+
+      await Deployer.deploy(contractName, {
+        network: options.network,
+        privateKey: seed,
+      });
+
+    } catch (error: any) {
+      Logger.error(error.message);
+      process.exit(1);
+    }
+  }
+
+  private static async createWallet(walletPath: string, network: string): Promise<void> {
+    console.log(chalk.yellow('⚠') + '  No wallet found. Creating new wallet...');
+    console.log();
+
+    const projectRoot = getProjectRoot();
+    ensureProjectDeps(projectRoot);
+    const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
+    setNetworkId(network as any);
+
+    const seed = await WalletManager.generateSeed();
+    const config = await ConfigLoader.load();
+    const networkConfig = config.networks[network];
+
+    if (!networkConfig) {
+      throw new Error(`Network "${network}" not found in config`);
+    }
+
+    const walletCtx = await WalletManager.create(seed, networkConfig);
+    const address = walletCtx.address;
+
+    FileSystem.writeJSON(walletPath, {
+      seed,
+      address,
+      network,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    console.log(chalk.green('✓') + ' Wallet created successfully!');
+    console.log();
+    console.log(chalk.bold('  Address: ') + chalk.cyan(address));
+    console.log(chalk.bold('  Network: ') + chalk.cyan(network));
+    console.log();
+
+    await walletCtx.wallet.close();
+  }
+
+  private static async waitForFunds(seed: string, address: string, network: string): Promise<void> {
+    console.log(chalk.bold.yellow('💰 Waiting for tNight funds...'));
+    console.log();
+    console.log(chalk.dim('  Your wallet needs tNight tokens to proceed with deployment.'));
+    console.log();
+    console.log(chalk.bold('  📍 Wallet Address:'));
+    console.log('  ' + chalk.cyan(address));
+    console.log();
+    console.log(chalk.bold('  🚰 Get test tokens from the faucet:'));
+    console.log('  ' + chalk.blue.underline('https://faucet.midnight.network'));
+    console.log();
+    console.log(chalk.dim('  Checking balance every 10 seconds...'));
+    console.log();
+
+    const config = await ConfigLoader.load();
+    const networkConfig = config.networks[network];
+    const projectRoot = getProjectRoot();
+    ensureProjectDeps(projectRoot);
+    const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
+    setNetworkId(network as any);
+
+    let walletCtx: any;
+    const spinner = ora({
+      text: 'Waiting for funds...',
+      spinner: 'dots',
+      color: 'cyan',
+    }).start();
+
+    try {
+      walletCtx = await WalletManager.create(seed, networkConfig);
+
+      // Poll for balance
+      let balance = 0n;
+      while (balance === 0n) {
+        try {
+          balance = await WalletManager.getBalance(walletCtx.wallet);
+          
+          if (balance > 0n) {
+            spinner.succeed(chalk.green('Funds detected! Balance: ') + chalk.cyan(this.formatBalance(balance, 6) + ' tNight'));
+            console.log();
+            break;
+          }
+        } catch (error) {
+          // Continue polling on error
+        }
+
+        await this.sleep(10000); // Check every 10 seconds
+      }
+
+    } finally {
+      if (walletCtx) {
+        await walletCtx.wallet.close();
+      }
+    }
+  }
+
+  private static async convertToDust(seed: string, network: string): Promise<void> {
+    console.log(chalk.bold.yellow('🔄 Converting tNight to DUST...'));
+    console.log();
+    console.log(chalk.dim('  DUST tokens are required for contract deployment.'));
+    console.log();
+
+    const config = await ConfigLoader.load();
+    const networkConfig = config.networks[network];
+    const projectRoot = getProjectRoot();
+    ensureProjectDeps(projectRoot);
+    const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
+    setNetworkId(network as any);
+
+    let walletCtx: any;
+    const spinner = ora({
+      text: 'Registering for DUST generation...',
+      spinner: 'dots',
+      color: 'cyan',
+    }).start();
+
+    try {
+      walletCtx = await WalletManager.create(seed, networkConfig);
+
+      // Register for DUST
+      spinner.text = 'Registering tNight for DUST generation...';
+      await WalletManager.ensureDust(walletCtx);
+
+      spinner.succeed(chalk.green('DUST tokens ready!'));
+      console.log();
+
+    } finally {
+      if (walletCtx) {
+        await walletCtx.wallet.close();
+      }
+    }
+  }
+
+  private static async waitForProofServer(projectRoot: string): Promise<void> {
+    console.log(chalk.bold.yellow('🔧 Waiting for proof server...'));
+    console.log();
+    console.log(chalk.dim('  A local proof server is required for deployment.'));
+    console.log();
+    console.log(chalk.bold('  Start the proof server with:'));
+    console.log('  ' + chalk.cyan('npx nightforge proof-server start'));
+    console.log();
+
+    const proofServerStatusPath = path.join(projectRoot, 'proof-server-status.json');
+    const spinner = ora({
+      text: 'Checking for proof server...',
+      spinner: 'dots',
+      color: 'cyan',
+    }).start();
+
+    let attempts = 0;
+    while (true) {
+      attempts++;
+
+      if (FileSystem.exists(proofServerStatusPath)) {
+        try {
+          const status = FileSystem.readJSON<{ running: boolean; state?: string; url?: string }>(proofServerStatusPath);
+          
+          if (status.running && status.state === 'ready' && status.url) {
+            spinner.succeed(chalk.green('Proof server ready! ') + chalk.cyan(status.url));
+            console.log();
+            return;
+          }
+
+          if (status.running && status.state !== 'ready') {
+            spinner.text = `Proof server starting (state: ${status.state})...`;
+          }
+        } catch (error) {
+          // Continue checking
+        }
+      } else {
+        if (attempts === 1) {
+          spinner.text = 'Waiting for proof-server-status.json...';
+        }
+      }
+
+      await this.sleep(3000); // Check every 3 seconds
+    }
+  }
+
+  private static formatBalance(balance: bigint, decimals: number): string {
+    const divisor = 10n ** BigInt(decimals);
+    const whole = balance / divisor;
+    const remainder = balance % divisor;
+    const fractional = remainder.toString().padStart(decimals, '0');
+    return `${whole.toLocaleString()}.${fractional}`;
+  }
+
+  private static sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}

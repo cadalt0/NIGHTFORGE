@@ -16,6 +16,9 @@ This folder contains detailed guides for each Nightforge command, with practical
 
 - [Compact Modules & Deployment](./COMPACT_MODULES.md) - Understanding Compact's module system and how Nightforge handles multi-module contracts
 
+## Troubleshooting
+
+- [Commands Troubleshooting](./troubleshoot/COMMANDS_TROUBLESHOOTING.md) - Detailed troubleshooting for init, compile, wallet, proof-server/ps, deploy, and clean
 ## Suggested Reading Order
 
 1. [Init Command](./commands/init.md)

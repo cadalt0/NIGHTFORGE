@@ -148,3 +148,6 @@ function stopProofServer(): void {
     Logger.warn('Proof server is not running');
   }
 }
+
+export { startProofServer, stopProofServer };
+

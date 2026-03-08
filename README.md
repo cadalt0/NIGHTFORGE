@@ -94,6 +94,7 @@ npx nightforge clean                         # Remove artifacts
 Detailed guides:
 
 - [Docs index](Docs/README.md)
+- [Contributing guide](CONTRIBUTING.md)
 - [Init guide](Docs/commands/init.md)
 - [Compile guide](Docs/commands/compile.md)
 - [Wallet guide](Docs/commands/wallet.md)

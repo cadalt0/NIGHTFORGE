@@ -104,29 +104,5 @@ Detailed guides:
 
 ---
 
-## 🧪 Troubleshooting
 
-### `Proof server is not running`
-
-Start it first:
-
-```bash
-npx nightforge proof-server start
-```
-
-### `Contract not compiled`
-
-Compile contracts first:
-
-```bash
-npx nightforge compile
-```
-
-### `No private key provided`
-
-Create wallet or pass seed:
-
-```bash
-npx nightforge wallet create --network preprod
-```
 

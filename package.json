@@ -4,6 +4,7 @@
   "description": "A comprehensive development tool for Midnight blockchain - like Hardhat but for Midnight",
   "main": "dist/index.js",
   "type": "module",
+  "repository": "https://github.com/cadalt0/NIGHTFORGE",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli/index.ts",
@@ -13,8 +14,7 @@
     "lint": "eslint src/**/*.ts"
   },
   "bin": {
-    "nightforge": "./dist/cli/index.js",
-    "Nightforge": "./dist/cli/index.js"
+    "nightforge": "./dist/cli/index.js"
   },
   "keywords": [
     "midnight",

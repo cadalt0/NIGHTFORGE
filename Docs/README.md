@@ -12,9 +12,6 @@ This folder contains detailed guides for each Nightforge command, with practical
 - [Deploy Command](./commands/deploy.md)
 - [Clean Command](./commands/clean.md)
 
-## Architecture & Concepts
-
-- [Compact Modules & Deployment](./COMPACT_MODULES.md) - Understanding Compact's module system and how Nightforge handles multi-module contracts
 
 ## Troubleshooting
 

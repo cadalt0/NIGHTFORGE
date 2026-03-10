@@ -8,14 +8,9 @@ Nightforge aims to be a **professional, modular, and extensible developer toolki
 
 ## 🔝 Top Priority (Current)
 
-Current contribution priority is focused on these two tracks:
+Current contribution priority is focused on:
 
-1. **Wallet seed security**
-  - Current state: wallet seeds are stored in the project root.
-  - Priority: move seed storage to a safer dedicated workspace/location.
-  - Goal: support secure import/use flows from that safe location instead of keeping sensitive data in the main project folder.
-
-2. **Local network support for development**
+1. **Local network support for development**
   - Add reliable local support for both testing and deployment.
   - Improve developer workflow so contracts can be compiled, tested, and deployed locally before targeting shared/preprod environments.
 

@@ -1,13 +1,11 @@
 import { Command } from 'commander';
 import inquirer from 'inquirer';
-import * as fs from 'node:fs';
 import { WalletManager } from '../../wallet/manager.js';
 import { ConfigLoader } from '../../config/loader.js';
-import { FileSystem } from '../../utils/file-system.js';
 import { Logger } from '../../utils/logger.js';
-import * as path from 'node:path';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../../utils/midnight-loader.js';
 import * as Rx from 'rxjs';
+import { generateReadableName, WalletStorage } from '../../wallet/storage.js';
 
 function formatBalance(balance: bigint, decimals: number = 6): string {
   const divisor = 10n ** BigInt(decimals);
@@ -25,24 +23,55 @@ function formatDustBalance(balance: bigint): string {
 const walletCmd = new Command('wallet')
   .description('Manage Midnight wallets');
 
-function getDefaultWalletPath(customPath?: string): string {
-  return path.resolve(customPath || './wallet.json');
+async function buildUniqueWalletName(address: string, requestedName?: string): Promise<string> {
+  if (requestedName) {
+    const forcedName = WalletStorage.buildWalletName(requestedName, address);
+    if (WalletStorage.walletExists(forcedName)) {
+      throw new Error(`Wallet "${forcedName}" already exists. Wallet names are never overwritten.`);
+    }
+    return forcedName;
+  }
+
+  for (let i = 0; i < 50; i++) {
+    const baseName = await generateReadableName();
+    const candidate = WalletStorage.buildWalletName(baseName, address);
+    if (!WalletStorage.walletExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error('Unable to generate a unique wallet name. Please pass --name.');
 }
 
 function saveWalletFile(data: {
+  name: string;
   address: string;
   seed: string;
   network: string;
-}, customPath?: string): string {
-  const walletPath = getDefaultWalletPath(customPath);
-  FileSystem.writeJSON(walletPath, {
-    ...data,
-    updatedAt: new Date().toISOString(),
-  });
+}): string {
+  const walletPath = WalletStorage.saveWallet(data);
+  WalletStorage.setActiveWallet(data.name);
   return walletPath;
 }
 
-async function createWallet(options: { network: string; export?: string }) {
+function resolveWalletNameOrActive(walletName?: string): string {
+  if (walletName) {
+    return WalletStorage.sanitizeName(walletName);
+  }
+
+  const active = WalletStorage.getActiveWalletName();
+  if (!active) {
+    throw new Error('No active wallet found. Create one with "npx nightforge wallet create" or pass --name.');
+  }
+  return active;
+}
+
+function getWalletData(walletName?: string) {
+  const targetName = resolveWalletNameOrActive(walletName);
+  return WalletStorage.loadWallet(targetName);
+}
+
+async function createWallet(options: { network: string; name?: string }) {
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
@@ -58,10 +87,12 @@ async function createWallet(options: { network: string; export?: string }) {
 
   const seed = await WalletManager.generateSeed();
   const walletCtx = await WalletManager.create(seed, networkConfig);
+  const walletName = await buildUniqueWalletName(walletCtx.address, options.name);
 
   Logger.success('Wallet created successfully!\n');
   
   Logger.log('═'.repeat(80));
+  Logger.log(`  Name:    ${walletName}`);
   Logger.log(`  Address: ${walletCtx.address}`);
   Logger.log(`  Network: ${options.network}`);
   Logger.log('═'.repeat(80));
@@ -72,18 +103,20 @@ async function createWallet(options: { network: string; export?: string }) {
   Logger.log('└' + '─'.repeat(78) + '┘\n');
 
   const savedPath = saveWalletFile(
-    { address: walletCtx.address, seed, network: options.network },
-    options.export
+    { name: walletName, address: walletCtx.address, seed, network: options.network }
   );
+  Logger.success(`✓ Active wallet: ${walletName}`);
   Logger.success(`✓ Wallet saved to: ${savedPath}\n`);
   
   Logger.log('💰 Fund your wallet:');
   Logger.log('   → https://faucet.preprod.midnight.network/\n');
 
-  await walletCtx.wallet.stop();
+  // Cleanup wallet in background and exit immediately (don't wait for connections to close)
+  walletCtx.wallet.stop().catch(() => {});
+  process.exit(0);
 }
 
-async function restoreWallet(options: { network: string }) {
+async function restoreWallet(options: { network: string; name?: string }) {
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
@@ -116,72 +149,46 @@ async function restoreWallet(options: { network: string }) {
 
   Logger.info('Restoring wallet...');
   const walletCtx = await WalletManager.create(seed, networkConfig);
+  const walletName = await buildUniqueWalletName(walletCtx.address, options.name);
 
   Logger.success('Wallet restored successfully!\n');
   
   Logger.log('═'.repeat(80));
+  Logger.log(`  Name:    ${walletName}`);
   Logger.log(`  Address: ${walletCtx.address}`);
   Logger.log(`  Network: ${options.network}`);
   Logger.log('═'.repeat(80) + '\n');
 
   const savedPath = saveWalletFile(
-    { address: walletCtx.address, seed, network: options.network }
+    { name: walletName, address: walletCtx.address, seed, network: options.network }
   );
+  Logger.success(`✓ Active wallet: ${walletName}`);
   Logger.success(`✓ Wallet saved to: ${savedPath}\n`);
   
   Logger.log('💰 Fund your wallet:');
   Logger.log('   → https://faucet.preprod.midnight.network/\n');
 
-  await walletCtx.wallet.stop();
+  // Cleanup wallet in background and exit immediately (don't wait for connections to close)
+  walletCtx.wallet.stop().catch(() => {});
+  process.exit(0);
 }
 
-async function showBalance(options: { network: string }) {
-  const projectRoot = getProjectRoot();
-  ensureProjectDeps(projectRoot);
-  const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
+async function removeWallet(options: { name?: string }) {
+  const walletName = resolveWalletNameOrActive(options.name);
+  const removedPath = WalletStorage.removeWallet(walletName);
+  Logger.success(`Removed wallet: ${walletName}`);
+  Logger.info(`Removed file: ${removedPath}`);
 
-  const { seed } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'seed',
-      message: 'Enter your wallet seed:',
-    },
-  ]);
-
-  const config = await ConfigLoader.load();
-  const networkConfig = config.networks[options.network];
-
-  if (!networkConfig) {
-    throw new Error(`Network "${options.network}" not found`);
-  }
-
-  setNetworkId(options.network as any);
-
-  Logger.info('Loading wallet...');
-  const walletCtx = await WalletManager.create(seed, networkConfig);
-
-  Logger.info('Syncing with network...');
-  await WalletManager.waitForSync(walletCtx.wallet);
-
-  const balance = await WalletManager.getBalance(walletCtx.wallet);
-
-  Logger.log(`\nAddress: ${walletCtx.address}`);
-  Logger.log(`Network: ${options.network}`);
-  Logger.log(`Balance: ${formatBalance(balance)} tNight\n`);
-
-  await walletCtx.wallet.stop();
-}
-
-async function removeWallet(options: { path?: string }) {
-  const walletPath = getDefaultWalletPath(options.path);
-
-  if (!FileSystem.exists(walletPath)) {
-    Logger.warn(`Wallet file not found: ${walletPath}`);
+  const remaining = WalletStorage.listWalletNames();
+  if (remaining.length === 0) {
+    Logger.warn('No wallets remaining.');
     return;
   }
 
-  fs.unlinkSync(walletPath);
-  Logger.success(`Removed wallet file: ${walletPath}`);
+  if (!WalletStorage.getActiveWalletName()) {
+    WalletStorage.setActiveWallet(remaining[0]);
+    Logger.info(`Active wallet switched to: ${remaining[0]}`);
+  }
 }
 
 async function registerForDustIfNeeded(walletCtx: any, askConfirmation: boolean): Promise<void> {
@@ -245,17 +252,12 @@ async function registerForDustIfNeeded(walletCtx: any, askConfirmation: boolean)
   Logger.success('DUST tokens ready!\n');
 }
 
-async function showBalanceFromFile(walletPath: string, network: string) {
+async function showBalanceFromStorage(walletName: string | undefined, network: string) {
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
 
-  if (!FileSystem.exists(walletPath)) {
-    Logger.error(`Wallet file not found: ${walletPath}`);
-    return;
-  }
-
-  const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf-8'));
+  const walletData = getWalletData(walletName);
   const config = await ConfigLoader.load();
   const networkConfig = config.networks[network];
 
@@ -280,6 +282,7 @@ async function showBalanceFromFile(walletPath: string, network: string) {
   ) as bigint;
 
   Logger.log('\n═'.repeat(80));
+  Logger.log(`  Name:    ${walletData.name}`);
   Logger.log(`  Address: ${walletCtx.address}`);
   Logger.log(`  Network: ${network}`);
   Logger.log(`  Balance: ${formatBalance(balance)} tNight`);
@@ -304,17 +307,12 @@ async function showBalanceFromFile(walletPath: string, network: string) {
   await walletCtx.wallet.stop();
 }
 
-async function convertToDust(walletPath: string, network: string) {
+async function convertToDust(walletName: string | undefined, network: string) {
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
 
-  if (!FileSystem.exists(walletPath)) {
-    Logger.error(`Wallet file not found: ${walletPath}`);
-    return;
-  }
-
-  const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf-8'));
+  const walletData = getWalletData(walletName);
   const config = await ConfigLoader.load();
   const networkConfig = config.networks[network];
 
@@ -359,52 +357,104 @@ async function convertToDust(walletPath: string, network: string) {
   await walletCtx.wallet.stop();
 }
 
+function listWallets(): void {
+  const names = WalletStorage.listWalletNames();
+  const active = WalletStorage.getActiveWalletName();
+
+  if (names.length === 0) {
+    Logger.warn('No wallets found. Create one with "npx nightforge wallet create".');
+    return;
+  }
+
+  Logger.log('\nStored wallets:\n');
+  for (const name of names) {
+    const marker = active === name ? ' (active)' : '';
+    Logger.log(`  - ${name}${marker}`);
+  }
+  Logger.log('');
+}
+
+function useWallet(walletName: string): void {
+  const safeName = WalletStorage.sanitizeName(walletName);
+  WalletStorage.setActiveWallet(safeName);
+  Logger.success(`Active wallet set to: ${safeName}`);
+}
+
 walletCmd.action(async () => {
   Logger.header('Wallet Manager');
 
   try {
-    const walletPath = getDefaultWalletPath();
-    const walletExists = FileSystem.exists(walletPath);
+    const wallets = WalletStorage.listWalletNames();
+    const hasWallets = wallets.length > 0;
 
     const choices: any[] = [
       { name: 'Create wallet', value: 'create' },
       { name: 'Restore wallet', value: 'restore' },
     ];
 
-    if (walletExists) {
+    if (hasWallets) {
       choices.push(
+        { name: 'List wallets', value: 'list' },
+        { name: 'Switch active wallet', value: 'use' },
         { name: 'Check balance', value: 'balance' },
         { name: 'Convert to DUST', value: 'dust' },
-        { name: 'Remove wallet file', value: 'remove' }
+        { name: 'Remove wallet', value: 'remove' }
       );
     }
 
-    const { action, network } = await inquirer.prompt([
+    const { action } = await inquirer.prompt([
       {
         type: 'list',
         name: 'action',
         message: 'Select wallet action:',
         choices,
       },
-      {
-        type: 'list',
-        name: 'network',
-        message: 'Select network:',
-        choices: ['preprod'],
-        default: 'preprod',
-      },
     ]);
+
+    let network = 'preprod';
+    if (action === 'create' || action === 'restore' || action === 'balance' || action === 'dust') {
+      const networkAnswer = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'network',
+          message: 'Select network:',
+          choices: ['preprod'],
+          default: 'preprod',
+        },
+      ]);
+      network = networkAnswer.network;
+    }
 
     if (action === 'create') {
       await createWallet({ network });
     } else if (action === 'restore') {
       await restoreWallet({ network });
+    } else if (action === 'list') {
+      listWallets();
+    } else if (action === 'use') {
+      const { walletName } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'walletName',
+          message: 'Select wallet:',
+          choices: wallets,
+        },
+      ]);
+      useWallet(walletName);
     } else if (action === 'balance') {
-      await showBalanceFromFile(walletPath, network);
+      await showBalanceFromStorage(undefined, network);
     } else if (action === 'dust') {
-      await convertToDust(walletPath, network);
+      await convertToDust(undefined, network);
     } else {
-      await removeWallet({});
+      const { walletName } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'walletName',
+          message: 'Select wallet to remove:',
+          choices: wallets,
+        },
+      ]);
+      await removeWallet({ name: walletName });
     }
   } catch (error) {
     Logger.error('Wallet operation failed', error as Error);
@@ -417,12 +467,12 @@ walletCmd
   .command('create')
   .description('Create a new wallet')
   .option('-n, --network <network>', 'Network to create wallet for', 'preprod')
-  .option('-e, --export <path>', 'Export wallet to file')
+  .option('--name <name>', 'Base wallet name (final name adds address suffix)')
   .action(async (options) => {
     Logger.header('Create New Wallet');
 
     try {
-      await createWallet({ network: options.network, export: options.export });
+      await createWallet({ network: options.network, name: options.name });
     } catch (error) {
       Logger.error('Failed to create wallet', error as Error);
       process.exit(1);
@@ -434,11 +484,12 @@ walletCmd
   .command('restore')
   .description('Restore wallet from seed')
   .option('-n, --network <network>', 'Network', 'preprod')
+  .option('--name <name>', 'Base wallet name (final name adds address suffix)')
   .action(async (options) => {
     Logger.header('Restore Wallet');
 
     try {
-      await restoreWallet({ network: options.network });
+      await restoreWallet({ network: options.network, name: options.name });
     } catch (error) {
       Logger.error('Failed to restore wallet', error as Error);
       process.exit(1);
@@ -450,12 +501,12 @@ walletCmd
   .command('balance')
   .description('Check wallet balance')
   .option('-n, --network <network>', 'Network', 'preprod')
-  .option('-p, --path <path>', 'Wallet file path', './wallet.json')
+  .option('--name <name>', 'Wallet name (defaults to active wallet)')
   .action(async (options) => {
     Logger.header('Wallet Balance');
 
     try {
-      await showBalanceFromFile(options.path, options.network);
+      await showBalanceFromStorage(options.name, options.network);
     } catch (error) {
       Logger.error('Failed to check balance', error as Error);
       process.exit(1);
@@ -464,15 +515,15 @@ walletCmd
 
 walletCmd
   .command('remove')
-  .description('Remove local wallet file')
-  .option('-p, --path <path>', 'Wallet file path', './wallet.json')
+  .description('Remove a stored wallet')
+  .option('--name <name>', 'Wallet name (defaults to active wallet)')
   .action(async (options) => {
-    Logger.header('Remove Wallet File');
+    Logger.header('Remove Wallet');
 
     try {
-      await removeWallet({ path: options.path });
+      await removeWallet({ name: options.name });
     } catch (error) {
-      Logger.error('Failed to remove wallet file', error as Error);
+      Logger.error('Failed to remove wallet', error as Error);
       process.exit(1);
     }
   });
@@ -481,14 +532,36 @@ walletCmd
   .command('dust')
   .description('Convert balance to DUST tokens')
   .option('-n, --network <network>', 'Network', 'preprod')
-  .option('-p, --path <path>', 'Wallet file path', './wallet.json')
+  .option('--name <name>', 'Wallet name (defaults to active wallet)')
   .action(async (options) => {
     Logger.header('Convert to DUST');
 
     try {
-      await convertToDust(options.path, options.network);
+      await convertToDust(options.name, options.network);
     } catch (error) {
       Logger.error('Failed to convert to DUST', error as Error);
+      process.exit(1);
+    }
+  });
+
+walletCmd
+  .command('list')
+  .description('List stored wallets')
+  .action(() => {
+    Logger.header('Wallet List');
+    listWallets();
+  });
+
+walletCmd
+  .command('use')
+  .description('Set active wallet')
+  .argument('<name>', 'Wallet name to set active')
+  .action((name) => {
+    Logger.header('Switch Active Wallet');
+    try {
+      useWallet(name);
+    } catch (error) {
+      Logger.error('Failed to switch wallet', error as Error);
       process.exit(1);
     }
   });

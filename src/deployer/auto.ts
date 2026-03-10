@@ -1,5 +1,4 @@
 import * as path from 'node:path';
-import * as fs from 'node:fs';
 import chalk from 'chalk';
 import ora from 'ora';
 import { WalletManager } from '../wallet/manager.js';
@@ -8,9 +7,11 @@ import { FileSystem } from '../utils/file-system.js';
 import { Logger } from '../utils/logger.js';
 import { Deployer } from './index.js';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
+import { generateReadableName, StoredWalletData, WalletStorage } from '../wallet/storage.js';
 
 interface AutoDeployOptions {
   network: string;
+  wallet?: string;
 }
 
 export class AutoDeployer {
@@ -21,26 +22,28 @@ export class AutoDeployer {
     console.log();
 
     const projectRoot = getProjectRoot();
-    const walletPath = path.join(projectRoot, 'wallet.json');
 
     try {
       // Step 1: Ensure wallet exists
       let seed: string;
       let address: string;
+      let walletName: string;
 
-      if (!FileSystem.exists(walletPath)) {
-        await this.createWallet(walletPath, options.network);
-      }
+      let walletData: StoredWalletData | undefined = options.wallet
+        ? WalletStorage.loadWallet(options.wallet)
+        : WalletStorage.getActiveWallet();
 
-      const walletData = FileSystem.readJSON<{ seed?: string; address?: string; network?: string }>(walletPath);
-      if (!walletData.seed || !walletData.address) {
-        throw new Error('Invalid wallet.json file');
+      if (!walletData) {
+        walletData = await this.createWallet(options.network);
       }
 
       seed = walletData.seed;
       address = walletData.address;
+      walletName = walletData.name;
 
-      console.log(chalk.green('✓') + ' Wallet loaded: ' + chalk.cyan(address));
+      WalletStorage.setActiveWallet(walletName);
+
+      console.log(chalk.green('✓') + ' Wallet loaded: ' + chalk.cyan(`${walletName} (${address})`));
       console.log();
 
       // Step 2: Wait for tNight funds
@@ -70,7 +73,7 @@ export class AutoDeployer {
     }
   }
 
-  private static async createWallet(walletPath: string, network: string): Promise<void> {
+  private static async createWallet(network: string): Promise<StoredWalletData> {
     console.log(chalk.yellow('⚠') + '  No wallet found. Creating new wallet...');
     console.log();
 
@@ -89,22 +92,27 @@ export class AutoDeployer {
 
     const walletCtx = await WalletManager.create(seed, networkConfig);
     const address = walletCtx.address;
+    const generatedName = await generateReadableName();
+    const walletName = WalletStorage.buildWalletName(generatedName, address);
 
-    FileSystem.writeJSON(walletPath, {
+    const walletPath = WalletStorage.saveWallet({
+      name: walletName,
       seed,
       address,
       network,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
+    WalletStorage.setActiveWallet(walletName);
 
     console.log(chalk.green('✓') + ' Wallet created successfully!');
     console.log();
+    console.log(chalk.bold('  Name:    ') + chalk.cyan(walletName));
     console.log(chalk.bold('  Address: ') + chalk.cyan(address));
     console.log(chalk.bold('  Network: ') + chalk.cyan(network));
+    console.log(chalk.bold('  Saved:   ') + chalk.cyan(walletPath));
     console.log();
 
     await walletCtx.wallet.close();
+    return WalletStorage.loadWallet(walletName);
   }
 
   private static async waitForFunds(seed: string, address: string, network: string): Promise<void> {

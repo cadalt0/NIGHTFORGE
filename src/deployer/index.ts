@@ -8,6 +8,7 @@ import { Logger } from '../utils/logger.js';
 import { DeploymentInfo, DeployOptions } from '../types/index.js';
 import { WebSocket } from 'ws';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
+import { WalletStorage } from '../wallet/storage.js';
 
 // Enable WebSocket for GraphQL subscriptions
 // @ts-ignore
@@ -84,32 +85,38 @@ export class Deployer {
       // Wallet setup
       Logger.section('Step 2: Wallet Setup');
       let seed = options.privateKey || process.env.MIDNIGHT_PRIVATE_KEY;
+      let walletNameForLog: string | undefined;
 
       if (!seed) {
-        const walletPath = path.join(projectRoot, 'wallet.json');
-        if (FileSystem.exists(walletPath)) {
-          const walletData = FileSystem.readJSON<{ seed?: string; network?: string }>(walletPath);
-          if (walletData.seed) {
-            seed = walletData.seed;
-            Logger.info(`Using wallet seed from: ${walletPath}`);
+        const selectedWallet = options.wallet
+          ? WalletStorage.loadWallet(options.wallet)
+          : WalletStorage.getActiveWallet();
 
-            if (walletData.network && walletData.network !== options.network) {
-              Logger.warn(
-                `wallet.json network is "${walletData.network}" but deploy network is "${options.network}"`
-              );
-            }
+        if (selectedWallet?.seed) {
+          seed = selectedWallet.seed;
+          walletNameForLog = selectedWallet.name;
+          Logger.info(`Using stored wallet: ${selectedWallet.name}`);
+
+          if (selectedWallet.network && selectedWallet.network !== options.network) {
+            Logger.warn(
+              `Wallet "${selectedWallet.name}" network is "${selectedWallet.network}" but deploy network is "${options.network}"`
+            );
           }
         }
       }
       
       if (!seed) {
         throw new Error(
-          'No private key provided. Use --private-key, set MIDNIGHT_PRIVATE_KEY, or create wallet.json via "npx nightforge wallet"'
+          'No private key provided. Use --private-key, set MIDNIGHT_PRIVATE_KEY, create a wallet with "npx nightforge wallet create", or select one with --wallet.'
         );
       }
 
       const walletCtx = await WalletManager.create(seed, networkConfig);
-      Logger.success(`Wallet: ${walletCtx.address}`);
+      if (walletNameForLog) {
+        Logger.success(`Wallet: ${walletNameForLog} (${walletCtx.address})`);
+      } else {
+        Logger.success(`Wallet: ${walletCtx.address}`);
+      }
 
       await WalletManager.waitForSync(walletCtx.wallet);
       const balance = await WalletManager.getBalance(walletCtx.wallet);

@@ -65,10 +65,36 @@ export async function importProjectModule(
   }
 
   candidates.push(
+    path.join(packageRoot, 'index.mjs'),
+    path.join(packageRoot, 'index.js'),
+    path.join(packageRoot, 'index.cjs'),
+    path.join(packageRoot, `${packageName}.mjs`),
+    path.join(packageRoot, `${packageName}.js`),
+    path.join(packageRoot, `${packageName}.cjs`),
+    path.join(packageRoot, 'midnight_ledger_wasm_fs.js'),
     path.join(packageRoot, 'dist', 'index.mjs'),
     path.join(packageRoot, 'dist', 'index.js'),
     path.join(packageRoot, 'dist', 'index.cjs')
   );
+
+  if (fs.existsSync(packageRoot)) {
+    try {
+      const jsFiles = fs
+        .readdirSync(packageRoot)
+        .filter((name) => /\.(mjs|cjs|js)$/.test(name))
+        .filter((name) => !name.endsWith('.d.ts'));
+
+      const preferred = jsFiles.find((name) => name.includes('_fs'))
+        || jsFiles.find((name) => !name.includes('_bg'))
+        || jsFiles[0];
+
+      if (preferred) {
+        candidates.push(path.join(packageRoot, preferred));
+      }
+    } catch {
+      // Ignore directory read issues and continue with known candidates.
+    }
+  }
 
   const modulePath = candidates.find((c) => fs.existsSync(c));
 

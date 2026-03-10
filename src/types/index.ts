@@ -48,6 +48,7 @@ export interface DeployOptions {
   network: string;
   script?: string;
   privateKey?: string;
+  wallet?: string;
 }
 
 export interface CompileOptions {

@@ -18,7 +18,15 @@ export class WalletManager {
     const projectRoot = getProjectRoot();
     ensureProjectDeps(projectRoot);
 
-    const ledger = await importProjectModule(projectRoot, 'ledger-v7');
+    let ledger: any;
+    try {
+      // Prefer v7 because wallet flows below rely on symbols like
+      // `ZswapSecretKeys` and `DustSecretKey` that are not available
+      // in older ledger package variants.
+      ledger = await importProjectModule(projectRoot, 'ledger-v7');
+    } catch {
+      ledger = await importProjectModule(projectRoot, 'ledger');
+    }
     const { WalletFacade } = await importProjectModule(projectRoot, 'wallet-sdk-facade');
     const { DustWallet } = await importProjectModule(projectRoot, 'wallet-sdk-dust-wallet');
     const { HDWallet, Roles, generateRandomSeed } = await importProjectModule(projectRoot, 'wallet-sdk-hd');

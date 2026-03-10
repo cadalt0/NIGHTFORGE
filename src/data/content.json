@@ -1,0 +1,185 @@
+{
+  "nav": {
+    "items": [
+      { "label": "Features", "href": "#features" },
+      { "label": "Workflow", "href": "#quickstart" },
+      { "label": "Docs", "href": "#docs" },
+      { "label": "FAQ", "href": "#faq" }
+    ],
+    "githubLabel": "Star on GitHub"
+  },
+  "hero": {
+    
+    "titleLine1": "Build & Deploy",
+    "titleLine2": "Midnight Contracts",
+    "subtitle": "One forge to rule your entire Midnight workflow — from project scaffolding to contract deployment.",
+    "ctaGetStarted": "Get Started",
+    "ctaDocs": "Documentation",
+    "ctaGithub": "GitHub"
+  },
+  "whatIs": {
+    "sectionLabel": "About",
+    "title": "What is",
+    "titleHighlight": "Nightforge",
+    "subtitle": "A developer toolkit for Midnight smart contract workflows. Less setup, more shipping.",
+    "bullets": [
+      { "icon": "Zap", "text": "Initialize projects quickly" },
+      { "icon": "FileCode", "text": "Compile Compact contracts with entry-file selection" },
+      { "icon": "Wallet", "text": "Manage wallet lifecycle and DUST conversion" },
+      { "icon": "Server", "text": "Run proof-server workflow checks" },
+      { "icon": "Rocket", "text": "Deploy contracts with artifact selection" }
+    ]
+  },
+  "problemSolution": {
+    "sectionLabel": "The why",
+    "title": "Why",
+    "titleHighlight": "Nightforge",
+    "withoutLabel": "Without Nightforge",
+    "withLabel": "With Nightforge",
+    "problems": [
+      "Too many manual steps across compile, wallet, proof-server, and deploy",
+      "Inconsistent local workflows between projects",
+      "Repeated setup overhead for every new contract app"
+    ],
+    "solutionTitle": "One toolkit. Predictable workflows.",
+    "solutionDesc": "Nightforge provides one unified workflow that keeps command behavior predictable and documentation-aligned. No more fragmented tooling — just ship.",
+    "stats": [
+      { "value": "6", "label": "Core commands" },
+      { "value": "1", "label": "Toolkit to learn" },
+      { "value": "0", "label": "Config headaches" }
+    ]
+  },
+  "features": {
+    "sectionLabel": "Capabilities",
+    "title": "Core Features",
+    "subtitle": "Everything for the Midnight contract lifecycle.",
+    "items": [
+      { "icon": "FolderPlus", "title": "Project Init", "desc": "Scaffold a Midnight-ready project with starter contracts and config.", "cmd": "init" },
+      { "icon": "Hammer", "title": "Compile", "desc": "Compile entry files directly. Interactive selection for multiple .compact files.", "cmd": "compile" },
+      { "icon": "Wallet", "title": "Wallet Ops", "desc": "Create, restore, check balance, and handle DUST — one command.", "cmd": "wallet" },
+      { "icon": "Server", "title": "Proof Server", "desc": "Start and monitor proof-server readiness for deployment.", "cmd": "proof-server" },
+      { "icon": "Rocket", "title": "Deploy", "desc": "Deploy by name with artifact selection. Auto mode for full orchestration.", "cmd": "deploy --auto" },
+      { "icon": "BookOpen", "title": "Troubleshoot", "desc": "Command-level troubleshooting for common failures.", "cmd": "help" }
+    ]
+  },
+  "workflow": {
+    "sectionLabel": "Workflow",
+    "title": "Developer Workflow",
+    "subtitle": "Six commands. Zero friction. Ship in minutes.",
+    "steps": [
+      { "num": "01", "cmd": "init", "example": "npx nightforge init my-app", "desc": "Scaffold project", "emoji": "📁" },
+      { "num": "02", "cmd": "compile", "example": "npx nightforge compile", "desc": "Compile contracts", "emoji": "⚡" },
+      { "num": "03", "cmd": "wallet", "example": "npx nightforge wallet create", "desc": "Create wallet", "emoji": "💳" },
+      { "num": "04", "cmd": "proof-server", "example": "npx nightforge proof-server start", "desc": "Start prover", "emoji": "🔒" },
+      { "num": "05", "cmd": "deploy", "example": "npx nightforge deploy example --auto", "desc": "Deploy contract", "emoji": "🚀" },
+      { "num": "06", "cmd": "clean", "example": "npx nightforge clean", "desc": "Clean artifacts", "emoji": "🧹" }
+    ]
+  },
+  "docs": {
+    "sectionLabel": "Reference",
+    "title": "Documentation",
+    "subtitle": "Every command documented. Every edge case covered.",
+    "categories": [
+      {
+        "title": "Getting Started",
+        "items": [
+          { "label": "README", "icon": "FileText", "desc": "Project overview & quick start", "linkKey": "readme" },
+          { "label": "Docs Index", "icon": "BookOpen", "desc": "Full documentation guide", "linkKey": "docsIndex" }
+        ]
+      },
+      {
+        "title": "Command Reference",
+        "items": [
+          { "label": "init", "icon": "FolderPlus", "desc": "Create new project scaffold", "linkKey": "commands.init" },
+          { "label": "compile", "icon": "Hammer", "desc": "Compile Compact contracts", "linkKey": "commands.compile" },
+          { "label": "wallet", "icon": "Wallet", "desc": "Wallet lifecycle commands", "linkKey": "commands.wallet" },
+          { "label": "proof-server", "icon": "Server", "desc": "Proof-server management", "linkKey": "commands.proofServer" },
+          { "label": "ps", "icon": "Terminal", "desc": "Process status shortcuts", "linkKey": "commands.ps" },
+          { "label": "deploy", "icon": "Rocket", "desc": "Contract deployment", "linkKey": "commands.deploy" },
+          { "label": "clean", "icon": "Trash2", "desc": "Remove build artifacts", "linkKey": "commands.clean" }
+        ]
+      },
+      {
+        "title": "Guides",
+        "items": [
+          { "label": "Troubleshooting", "icon": "HelpCircle", "desc": "Common issues & fixes", "linkKey": "troubleshooting" },
+          { "label": "Contributing", "icon": "Users", "desc": "How to contribute", "linkKey": "contributing" }
+        ]
+      }
+    ]
+  },
+  "release": {
+    "badgeLabel": "Latest Release",
+    "titleLine1": "Initial Public",
+    "titleLine2": "Release",
+    "description": "The core Nightforge workflow for Midnight development — command guides, troubleshooting, and contributor guidance.",
+    "bullets": [
+      "Core toolkit commands: init, compile, wallet, proof-server, deploy, clean",
+      "Interactive selection for compile entry-files and deploy artifacts",
+      "Comprehensive command documentation and troubleshooting",
+      "Auto-deploy mode for end-to-end orchestration"
+    ]
+  },
+  "faq": {
+    "title": "FAQ",
+    "subtitle": "Common questions, straight answers.",
+    "items": [
+      {
+        "q": "Does Nightforge replace the Compact compiler?",
+        "a": "No. Nightforge orchestrates workflows and calls Compact compiler as part of the pipeline. It's a toolkit layer on top of existing Midnight infrastructure."
+      },
+      {
+        "q": "How are multiple contract files handled?",
+        "a": "The compile command prompts for entry-file selection when multiple .compact files exist, or you can pass the file path explicitly."
+      },
+      {
+        "q": "How are multiple deploy artifacts handled?",
+        "a": "Deploy prompts for artifact selection if multiple compiled artifacts exist. Pass the name explicitly to skip the prompt."
+      },
+      {
+        "q": "Do I need proof-server running before deploy?",
+        "a": "Yes, standard deploy requires proof-server readiness. Use --auto flag to let Nightforge handle the full orchestration automatically."
+      },
+      {
+        "q": "Can I automate the entire deploy flow?",
+        "a": "Yes! Use nightforge deploy --auto for end-to-end orchestration — it handles proof-server startup, compilation checks, and deployment in sequence."
+      }
+    ]
+  },
+  "finalCta": {
+    "titleLine1": "Start building with",
+    "titleLine2": "Nightforge",
+    "subtitle": "From project scaffold to deployed contract in minutes, not hours.",
+    "ctaPrimary": "Install & Quick Start",
+    "ctaSecondary": "Open GitHub",
+    "installCommand": "npx nightforge init my-app"
+  },
+  "footer": {
+    "links": [
+      { "label": "GitHub", "linkKey": "github" },
+      { "label": "npm", "href": "https://www.npmjs.com/package/nightforge" },
+      { "label": "Docs", "href": "#docs" },
+      { "label": "Contributing", "linkKey": "contributing" }
+    ]
+  },
+  "terminal": {
+    "title": "nightforge — terminal",
+    "lines": [
+      { "type": "command", "text": "npx nightforge init my-dapp", "delay": 400 },
+      { "type": "success", "text": "✓ Created project structure", "delay": 600 },
+      { "type": "success", "text": "✓ Generated starter contract", "delay": 400 },
+      { "type": "success", "text": "✓ Initialized configuration", "delay": 400 },
+      { "type": "command", "text": "npx nightforge compile", "delay": 800 },
+      { "type": "spinner", "text": "⠋ Compiling token.compact...", "delay": 500 },
+      { "type": "success", "text": "✓ Compiled successfully in 2.3s", "delay": 1000 },
+      { "type": "command", "text": "npx nightforge wallet create", "delay": 700 },
+      { "type": "success", "text": "✓ Wallet created: mn1q8x...f4k2", "delay": 600 },
+      { "type": "success", "text": "✓ DUST balance ready", "delay": 400 },
+      { "type": "command", "text": "npx nightforge deploy token --auto", "delay": 800 },
+      { "type": "spinner", "text": "⠋ Starting proof-server...", "delay": 500 },
+      { "type": "success", "text": "✓ Proof-server ready", "delay": 1200 },
+      { "type": "success", "text": "✓ Contract deployed at 0x7a3f...b2e1", "delay": 800 },
+      { "type": "highlight", "text": "🔥 Deploy complete in 14.7s", "delay": 600 }
+    ]
+  }
+}

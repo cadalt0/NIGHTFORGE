@@ -1,0 +1,28 @@
+{
+  "brand": {
+    "name": "Nightforge",
+    "emoji": "⚒",
+    "version": "v0.0.6",
+    "installCommand": "npm i nightforge",
+    "license": "Apache License",
+    "tagline": "Built for Midnight developers"
+  },
+  "links": {
+    "github": "https://github.com/cadalt0/NIGHTFORGE",
+    "readme": "https://github.com/cadalt0/NIGHTFORGE/blob/main/README.md",
+    "contributing": "https://github.com/cadalt0/NIGHTFORGE/blob/main/CONTRIBUTING.md",
+    "docsIndex": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/README.md",
+    "latestRelease": "https://github.com/cadalt0/NIGHTFORGE/releases/tag/v0.0.5",
+    "troubleshooting": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/troubleshoot/COMMANDS_TROUBLESHOOTING.md",
+    "changelog": "https://github.com/cadalt0/NIGHTFORGE/blob/main/CHANGELOG.md",
+    "commands": {
+      "init": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/init.md",
+      "compile": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/compile.md",
+      "wallet": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/wallet.md",
+      "proofServer": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/proof-server.md",
+      "ps": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/ps.md",
+      "deploy": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/deploy.md",
+      "clean": "https://github.com/cadalt0/NIGHTFORGE/blob/main/Docs/commands/clean.md"
+    }
+  }
+}

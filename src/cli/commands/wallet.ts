@@ -6,6 +6,7 @@ import { Logger } from '../../utils/logger.js';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../../utils/midnight-loader.js';
 import * as Rx from 'rxjs';
 import { generateReadableName, WalletStorage } from '../../wallet/storage.js';
+import { withSpinner } from '../../utils/cli-spinner.js';
 
 function formatBalance(balance: bigint, decimals: number = 6): string {
   const divisor = 10n ** BigInt(decimals);
@@ -267,11 +268,13 @@ async function showBalanceFromStorage(walletName: string | undefined, network: s
 
   setNetworkId(network as any);
 
-  Logger.info('Loading wallet...');
-  const walletCtx = await WalletManager.create(walletData.seed, networkConfig);
+  const walletCtx = await withSpinner('Loading wallet...', async () =>
+    WalletManager.create(walletData.seed, networkConfig)
+  );
 
-  Logger.info('Syncing with network...');
-  await WalletManager.waitForSync(walletCtx.wallet);
+  await withSpinner('Syncing with network...', async () =>
+    WalletManager.waitForSync(walletCtx.wallet)
+  );
 
   const balance = await WalletManager.getBalance(walletCtx.wallet);
   const dustBalance = await Rx.firstValueFrom(
@@ -290,7 +293,9 @@ async function showBalanceFromStorage(walletName: string | undefined, network: s
   Logger.log('═'.repeat(80) + '\n');
 
   if (balance > 0n && dustBalance === 0n) {
-    await registerForDustIfNeeded(walletCtx, true);
+    await withSpinner('Registering for DUST (if needed)...', async () =>
+      registerForDustIfNeeded(walletCtx, true)
+    );
 
     const updatedDust = await Rx.firstValueFrom(
       walletCtx.wallet.state().pipe(
@@ -322,13 +327,14 @@ async function convertToDust(walletName: string | undefined, network: string) {
 
   setNetworkId(network as any);
 
-  Logger.info('Loading wallet...');
-  const walletCtx = await WalletManager.create(walletData.seed, networkConfig);
+  const walletCtx = await withSpinner('Loading wallet...', async () =>
+    WalletManager.create(walletData.seed, networkConfig)
+  );
 
-  Logger.info('Checking balance...');
-
-  await WalletManager.waitForSync(walletCtx.wallet);
-  const balance = await WalletManager.getBalance(walletCtx.wallet);
+  const balance = await withSpinner('Checking balance...', async () => {
+    await WalletManager.waitForSync(walletCtx.wallet);
+    return WalletManager.getBalance(walletCtx.wallet);
+  });
 
   if (balance <= 0n) {
     Logger.warn('\n⚠️  No balance found. Please fund your wallet first!');
@@ -341,7 +347,9 @@ async function convertToDust(walletName: string | undefined, network: string) {
   Logger.success(`Balance found: ${formatBalance(balance)} tNight\n`);
 
   Logger.log('─── DUST Token Setup ───────────────────────────────────────────\n');
-  await registerForDustIfNeeded(walletCtx, false);
+  await withSpinner('Registering for DUST (if needed)...', async () =>
+    registerForDustIfNeeded(walletCtx, false)
+  );
 
   const finalBalance = await Rx.firstValueFrom(
     walletCtx.wallet.state().pipe(

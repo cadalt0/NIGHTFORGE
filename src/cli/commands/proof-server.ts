@@ -2,7 +2,9 @@ import { Command } from 'commander';
 import { spawn, ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { WalletStorage } from '../../wallet/storage.js';
 import { Logger } from '../../utils/logger.js';
+import { startSpinner } from '../../utils/cli-spinner.js';
 
 let proofServerProcess: ChildProcess | null = null;
 const statusFileName = 'proof-server-status.json';
@@ -25,12 +27,12 @@ function startProofServer(version: string, port: string): void {
   Logger.header('Midnight Proof Server');
 
   try {
-    Logger.info('Checking Docker...');
-    
+    const dockerSpinner = startSpinner('Checking Docker...');
     // Check if Docker is running
     const dockerCheck = spawn('docker', ['info'], { stdio: 'pipe' });
-    
+
     dockerCheck.on('error', () => {
+      dockerSpinner.fail('Docker check failed');
       Logger.error('Docker is not installed or not running');
       Logger.info('Install Docker: https://docs.docker.com/get-docker/');
       process.exit(1);
@@ -38,13 +40,16 @@ function startProofServer(version: string, port: string): void {
 
     dockerCheck.on('close', (code) => {
       if (code !== 0) {
+        dockerSpinner.fail('Docker not running');
         Logger.error('Docker is not running. Please start Docker and try again.');
         process.exit(1);
       }
 
+      dockerSpinner.succeed('Docker running');
       Logger.info(`Starting proof server on port ${port}...`);
       let statusWritten = false;
-      const statusFilePath = path.join(process.cwd(), statusFileName);
+      WalletStorage.ensureInitialized();
+      const statusFilePath = path.join(WalletStorage.getBaseDir(), statusFileName);
       
       proofServerProcess = spawn(
         'docker',

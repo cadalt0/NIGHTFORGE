@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { spawn } from 'node:child_process';
 import chalk from 'chalk';
 import ora from 'ora';
+import { startSpinner } from '../../utils/cli-spinner.js';
 import { FileSystem } from '../../utils/file-system.js';
 import { Logger } from '../../utils/logger.js';
 
@@ -129,7 +130,7 @@ export const initCommand = new Command('init')
         process.exit(1);
       }
 
-      const setupSpinner = ora(`Setting up ${chalk.cyan(name)}...`).start();
+      const setupSpinner = startSpinner(`Setting up ${chalk.cyan(name)}...`);
 
       // Create directory structure
       FileSystem.createDir(projectPath);
@@ -192,7 +193,7 @@ export const initCommand = new Command('init')
       setupSpinner.succeed(`Project scaffold ready: ${chalk.cyan(name)}`);
 
       if (options.install) {
-        const installSpinner = ora(`Installing dependencies for ${chalk.cyan(name)}...`).start();
+        const installSpinner = startSpinner(`Installing dependencies for ${chalk.cyan(name)}...`);
         const result = await runInstall(projectPath);
 
         if (result.code === 0) {

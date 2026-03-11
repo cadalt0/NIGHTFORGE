@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import chalk from 'chalk';
-import ora from 'ora';
+import { startSpinner, withSpinner } from '../utils/cli-spinner.js';
 import { WalletManager } from '../wallet/manager.js';
 import { ConfigLoader } from '../config/loader.js';
 import { FileSystem } from '../utils/file-system.js';
@@ -59,13 +59,22 @@ export class AutoDeployer {
       console.log();
 
       // Step 2: Combined balance check (tNight and DUST)
-      await this.checkBalances(seed, options.network);
+      const { balance, dustBalance } = await this.checkBalances(seed, options.network);
 
-      // Step 2: Wait for tNight funds
-      await this.waitForFunds(seed, address, options.network);
-
-      // Step 3: Convert to DUST
-      await this.convertToDust(seed, options.network);
+      // Decide what steps to run based on balances:
+      // - If both tNight and DUST exist: skip waiting and conversion
+      // - If tNight exists but no DUST: skip waiting, run conversion
+      // - If no tNight: wait for funds then convert
+      if (balance > 0n && dustBalance > 0n) {
+        console.log(chalk.green('✓') + ' tNight and DUST already available — skipping fund/wait and conversion steps.');
+      } else if (balance > 0n && dustBalance === 0n) {
+        console.log(chalk.green('✓') + ' tNight available — skipping wait for funds, proceeding to convert to DUST.');
+        await this.convertToDust(seed, options.network);
+      } else {
+        // balance === 0n
+        await this.waitForFunds(seed, address, options.network);
+        await this.convertToDust(seed, options.network);
+      }
 
       // Step 4: Wait for proof server
       await this.waitForProofServer(projectRoot);
@@ -82,6 +91,9 @@ export class AutoDeployer {
         privateKey: seed,
       });
 
+      Logger.success('Auto-deploy finished. Exiting.');
+      process.exit(0);
+
     } catch (error: any) {
       Logger.error(error.message);
       process.exit(1);
@@ -89,7 +101,7 @@ export class AutoDeployer {
   }
 
   // Combined balance check for tNight and DUST
-  private static async checkBalances(seed: string, network: string): Promise<void> {
+  private static async checkBalances(seed: string, network: string): Promise<{ balance: bigint; dustBalance: bigint }> {
     const config = await ConfigLoader.load();
     const networkConfig = config.networks[network];
     const projectRoot = getProjectRoot();
@@ -97,8 +109,12 @@ export class AutoDeployer {
     const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
     setNetworkId(network as any);
 
-    const walletCtx = await WalletManager.create(seed, networkConfig);
-    await WalletManager.waitForSync(walletCtx.wallet);
+    const walletCtx = await withSpinner('Loading wallet...', async () =>
+      WalletManager.create(seed, networkConfig)
+    );
+    await withSpinner('Syncing with network...', async () =>
+      WalletManager.waitForSync(walletCtx.wallet)
+    );
 
     const balance = await WalletManager.getBalance(walletCtx.wallet);
     const dustBalance = await Rx.firstValueFrom(
@@ -130,6 +146,8 @@ export class AutoDeployer {
       await walletCtx.wallet.shutdown();
     }
     // If not available, do nothing (matches normal deploy usage)
+
+    return { balance, dustBalance: dustBalance as bigint };
   }
 
   private static async createWallet(network: string): Promise<StoredWalletData> {
@@ -198,11 +216,7 @@ export class AutoDeployer {
     setNetworkId(network as any);
 
     let walletCtx: any;
-    const spinner = ora({
-      text: 'Waiting for funds...',
-      spinner: 'dots',
-      color: 'cyan',
-    }).start();
+    const spinner = startSpinner('Waiting for funds...');
 
     try {
       walletCtx = await WalletManager.create(seed, networkConfig);
@@ -246,11 +260,7 @@ export class AutoDeployer {
     setNetworkId(network as any);
 
     let walletCtx: any;
-    const spinner = ora({
-      text: 'Registering for DUST generation...',
-      spinner: 'dots',
-      color: 'cyan',
-    }).start();
+    const spinner = startSpinner('Registering for DUST generation...');
 
     try {
       walletCtx = await WalletManager.create(seed, networkConfig);
@@ -278,12 +288,8 @@ export class AutoDeployer {
     console.log('  ' + chalk.cyan('npx nightforge proof-server start'));
     console.log();
 
-    const proofServerStatusPath = path.join(projectRoot, 'proof-server-status.json');
-    const spinner = ora({
-      text: 'Checking for proof server...',
-      spinner: 'dots',
-      color: 'cyan',
-    }).start();
+    const proofServerStatusPath = path.join(WalletStorage.getBaseDir(), 'proof-server-status.json');
+    const spinner = startSpinner('Checking for proof server...');
 
     let attempts = 0;
     while (true) {

@@ -1,0 +1,1 @@
+{"version":3,"file":"proof-server.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/proof-server.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AAWpC,eAAO,MAAM,kBAAkB,SAY3B,CAAC;AAEL,iBAAS,gBAAgB,CAAC,OAAO,EAAE,MAAM,EAAE,IAAI,EAAE,MAAM,GAAG,IAAI,CAsH7D;AAED,iBAAS,eAAe,IAAI,IAAI,CAS/B;AAED,OAAO,EAAE,gBAAgB,EAAE,eAAe,EAAE,CAAC"}

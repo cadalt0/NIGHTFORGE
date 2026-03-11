@@ -2,7 +2,7 @@
 
 Nightforge is a development environment to compile, deploy, and operate Midnight contracts.
 
-It gives Midnight developers a streamlined workflow with built-in project scaffolding, wallet lifecycle tools, proof-server orchestration, and deployment.
+It gives Midnight developers a streamlined workflow with built-in project scaffolding, wallet lifecycle tools, proof server orchestration, and deployment.
 
 ---
 

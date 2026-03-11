@@ -8,6 +8,7 @@ import { Logger } from '../utils/logger.js';
 import { DeploymentInfo, DeployOptions } from '../types/index.js';
 import { WebSocket } from 'ws';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
+import { withSpinner } from '../utils/cli-spinner.js';
 import { WalletStorage } from '../wallet/storage.js';
 
 // Enable WebSocket for GraphQL subscriptions
@@ -30,7 +31,7 @@ export class Deployer {
       const projectRoot = getProjectRoot();
 
       // Check for local proof server status - REQUIRED for deployment
-      const proofServerStatusPath = path.join(projectRoot, 'proof-server-status.json');
+      const proofServerStatusPath = path.join(WalletStorage.getBaseDir(), 'proof-server-status.json');
       if (!FileSystem.exists(proofServerStatusPath)) {
         Logger.error('Proof server status not found');
         Logger.info('Please start the proof server with: npx nightforge proof-server start');
@@ -111,14 +112,19 @@ export class Deployer {
         );
       }
 
-      const walletCtx = await WalletManager.create(seed, networkConfig);
+      const walletCtx = await withSpinner('Loading wallet...', async () =>
+        WalletManager.create(seed, networkConfig)
+      );
       if (walletNameForLog) {
         Logger.success(`Wallet: ${walletNameForLog} (${walletCtx.address})`);
       } else {
         Logger.success(`Wallet: ${walletCtx.address}`);
       }
 
-      await WalletManager.waitForSync(walletCtx.wallet);
+      await withSpinner('Syncing with network...', async () =>
+        WalletManager.waitForSync(walletCtx.wallet)
+      );
+
       const balance = await WalletManager.getBalance(walletCtx.wallet);
       Logger.info(`Balance: ${balance.toLocaleString()} tNight`);
 
@@ -127,33 +133,38 @@ export class Deployer {
         Logger.warn('Wallet has no funds!');
         Logger.info(`Visit: https://faucet.preprod.midnight.network/`);
         Logger.info(`Address: ${walletCtx.address}`);
-        await WalletManager.waitForFunds(walletCtx.wallet);
+        await withSpinner('Waiting for funds...', async () =>
+          WalletManager.waitForFunds(walletCtx.wallet)
+        );
       }
 
       // Ensure DUST
       Logger.section('Step 3: DUST Token Setup');
-      await WalletManager.ensureDust(walletCtx);
+      await withSpinner('Ensuring DUST tokens...', async () =>
+        WalletManager.ensureDust(walletCtx)
+      );
 
       // Deploy
       Logger.section('Step 4: Deploying Contract');
-      Logger.info('Setting up providers...');
-      const providers = await ProviderFactory.create(
-        walletCtx,
-        networkConfig,
-        zkConfigPath,
-        `${contractName}-state`
+      const providers = await withSpinner('Setting up providers...', async () =>
+        ProviderFactory.create(
+          walletCtx,
+          networkConfig,
+          zkConfigPath,
+          `${contractName}-state`
+        )
       );
 
-      Logger.info('Deploying (this may take 30-60 seconds)...');
-      const deployed = await deployContract(providers, {
-        compiledContract: compiledContract as any,
-        args: [],
-        privateStateId: `${contractName}State`,
-        initialPrivateState: {},
-      });
+      const deployed = await withSpinner('Deploying contract (this may take 30-60s)...', async () =>
+        deployContract(providers, {
+          compiledContract: compiledContract as any,
+          args: [],
+          privateStateId: `${contractName}State`,
+          initialPrivateState: {},
+        })
+      );
 
       const contractAddress = deployed.deployTxData.public.contractAddress;
-      Logger.success('Contract deployed successfully!');
       Logger.log(`\nContract Address: ${contractAddress}\n`);
 
       // Save deployment info

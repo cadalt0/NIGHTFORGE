@@ -8,6 +8,7 @@ import { Logger } from '../utils/logger.js';
 import { Deployer } from './index.js';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
 import { generateReadableName, StoredWalletData, WalletStorage } from '../wallet/storage.js';
+import * as Rx from 'rxjs';
 
 interface AutoDeployOptions {
   network: string;
@@ -16,12 +17,23 @@ interface AutoDeployOptions {
 
 export class AutoDeployer {
   static async deploy(contractName: string, options: AutoDeployOptions): Promise<void> {
+          // Step 5: Check if contract is compiled (same as normal deploy)
+    const config = await ConfigLoader.load();
+    const projectRoot = getProjectRoot();
+    const managedDir = path.join(projectRoot, config.contracts?.outputDir || 'contracts/managed');
+    const zkConfigPath = path.join(managedDir, contractName);
+    if (!FileSystem.exists(path.join(zkConfigPath, 'contract', 'index.js'))) {
+      console.log('\n' + chalk.redBright.bold('✗ Contract not compiled!'));
+      console.log(chalk.bgRed.white.bold(`  Contract: ${contractName}  `));
+      console.log(chalk.redBright('───────────────────────────────────────────────────────────────'));
+      console.log(chalk.yellow('  Run: ') + chalk.cyan.bold('npx nightforge compile') + chalk.yellow(' to build your contract before deploying.'));
+      console.log(chalk.redBright('───────────────────────────────────────────────────────────────\n'));
+      return;
+    }
     console.log('\n' + chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
     console.log(chalk.bold.cyan('  🚀 Nightforge - Auto Deployment Mode'));
     console.log(chalk.bold.cyan('═══════════════════════════════════════════════════════════════'));
     console.log();
-
-    const projectRoot = getProjectRoot();
 
     try {
       // Step 1: Ensure wallet exists
@@ -45,6 +57,9 @@ export class AutoDeployer {
 
       console.log(chalk.green('✓') + ' Wallet loaded: ' + chalk.cyan(`${walletName} (${address})`));
       console.log();
+
+      // Step 2: Combined balance check (tNight and DUST)
+      await this.checkBalances(seed, options.network);
 
       // Step 2: Wait for tNight funds
       await this.waitForFunds(seed, address, options.network);
@@ -71,6 +86,50 @@ export class AutoDeployer {
       Logger.error(error.message);
       process.exit(1);
     }
+  }
+
+  // Combined balance check for tNight and DUST
+  private static async checkBalances(seed: string, network: string): Promise<void> {
+    const config = await ConfigLoader.load();
+    const networkConfig = config.networks[network];
+    const projectRoot = getProjectRoot();
+    ensureProjectDeps(projectRoot);
+    const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
+    setNetworkId(network as any);
+
+    const walletCtx = await WalletManager.create(seed, networkConfig);
+    await WalletManager.waitForSync(walletCtx.wallet);
+
+    const balance = await WalletManager.getBalance(walletCtx.wallet);
+    const dustBalance = await Rx.firstValueFrom(
+      walletCtx.wallet.state().pipe(
+        Rx.filter((s: any) => s.isSynced),
+        Rx.map((s: any) => s.dust.walletBalance(new Date()))
+      )
+    );
+
+    // Formatting copied from wallet command
+    function formatBalance(balance: bigint, decimals: number = 6): string {
+      const divisor = 10n ** BigInt(decimals);
+      const whole = balance / divisor;
+      const remainder = balance % divisor;
+      const fractional = remainder.toString().padStart(decimals, '0');
+      return `${whole.toLocaleString()}.${fractional}`;
+    }
+    function formatDustBalance(balance: bigint): string {
+      return formatBalance(balance, 15);
+    }
+
+    console.log('\n' + '═'.repeat(80));
+    console.log(`  Balance: ${formatBalance(balance)} tNight`);
+    console.log(`  DUST:    ${formatDustBalance(dustBalance as bigint)}`);
+    console.log('═'.repeat(80) + '\n');
+
+    // Use shutdown method if available, else skip
+    if (typeof walletCtx.wallet.shutdown === 'function') {
+      await walletCtx.wallet.shutdown();
+    }
+    // If not available, do nothing (matches normal deploy usage)
   }
 
   private static async createWallet(network: string): Promise<StoredWalletData> {
@@ -111,7 +170,9 @@ export class AutoDeployer {
     console.log(chalk.bold('  Saved:   ') + chalk.cyan(walletPath));
     console.log();
 
-    await walletCtx.wallet.close();
+    if (typeof walletCtx.wallet.shutdown === 'function') {
+      await walletCtx.wallet.shutdown();
+    }
     return WalletStorage.loadWallet(walletName);
   }
 
@@ -165,8 +226,8 @@ export class AutoDeployer {
       }
 
     } finally {
-      if (walletCtx) {
-        await walletCtx.wallet.close();
+      if (walletCtx && typeof walletCtx.wallet.shutdown === 'function') {
+        await walletCtx.wallet.shutdown();
       }
     }
   }
@@ -202,8 +263,8 @@ export class AutoDeployer {
       console.log();
 
     } finally {
-      if (walletCtx) {
-        await walletCtx.wallet.close();
+      if (walletCtx && typeof walletCtx.wallet.shutdown === 'function') {
+        await walletCtx.wallet.shutdown();
       }
     }
   }

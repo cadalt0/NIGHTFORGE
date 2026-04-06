@@ -1,5 +1,9 @@
 # Nightforge 🔨
 
+[![npm version](https://img.shields.io/npm/v/nightforge?style=flat-square)](https://www.npmjs.com/package/nightforge)
+[View on npm](https://www.npmjs.com/package/nightforge)
+
+
 Nightforge is a development environment to compile, deploy, and operate Midnight contracts.
 
 It gives Midnight developers a streamlined workflow with built-in project scaffolding, wallet lifecycle tools, proof server orchestration, and deployment.

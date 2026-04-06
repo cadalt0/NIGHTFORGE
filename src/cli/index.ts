@@ -6,6 +6,7 @@ import { walletCommand } from './commands/wallet.js';
 import { initCommand } from './commands/init.js';
 import { proofServerCommand, startProofServer, stopProofServer } from './commands/proof-server.js';
 import { cleanCommand } from './commands/clean.js';
+import { syncCommand } from './commands/sync.js';
 
 const program = new Command();
 
@@ -20,6 +21,7 @@ program.addCommand(compileCommand);
 program.addCommand(deployCommand);
 program.addCommand(walletCommand);
 program.addCommand(proofServerCommand);
+program.addCommand(syncCommand);
 
 // Register ps alias for proof-server
 const psCommand = new Command('ps')

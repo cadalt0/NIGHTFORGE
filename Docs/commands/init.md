@@ -51,3 +51,15 @@ Pick a project name (letters, numbers, - and _).
 - `package.json`
 - `.gitignore`
 
+When auto-install is enabled (default), Nightforge also runs walletsync initialization:
+
+- `midnightwalletsync.config.json`
+- `.env.example`
+- `.env` (if missing)
+
+Generated project scripts also include:
+
+- `sync:init`
+- `sync`
+- `sync:status`
+

@@ -9,10 +9,14 @@ import { Deployer } from './index.js';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../utils/midnight-loader.js';
 import { generateReadableName, StoredWalletData, WalletStorage } from '../wallet/storage.js';
 import * as Rx from 'rxjs';
+import { convertDustViaWalletSync, getWalletSyncBalance, waitForWalletSyncDustBalance } from '../utils/walletsync-client.js';
+import { getDeploySyncState } from '../wallet/deploy-sync-state.js';
 
 interface AutoDeployOptions {
   network: string;
   wallet?: string;
+  legacy?: boolean;
+  proofServerUrl?: string;
 }
 
 export class AutoDeployer {
@@ -59,7 +63,7 @@ export class AutoDeployer {
       console.log();
 
       // Step 2: Combined balance check (tNight and DUST)
-      const { balance, dustBalance } = await this.checkBalances(seed, options.network);
+      const { balance, dustBalance } = await this.checkBalances(seed, walletName, options.network, Boolean(options.legacy));
 
       // Decide what steps to run based on balances:
       // - If both tNight and DUST exist: skip waiting and conversion
@@ -69,15 +73,15 @@ export class AutoDeployer {
         console.log(chalk.green('✓') + ' tNight and DUST already available — skipping fund/wait and conversion steps.');
       } else if (balance > 0n && dustBalance === 0n) {
         console.log(chalk.green('✓') + ' tNight available — skipping wait for funds, proceeding to convert to DUST.');
-        await this.convertToDust(seed, options.network);
+        await this.convertToDust(seed, options.network, walletName, Boolean(options.legacy));
       } else {
         // balance === 0n
-        await this.waitForFunds(seed, address, options.network);
-        await this.convertToDust(seed, options.network);
+        await this.waitForFunds(seed, address, walletName, options.network, Boolean(options.legacy));
+        await this.convertToDust(seed, options.network, walletName, Boolean(options.legacy));
       }
 
       // Step 4: Wait for proof server
-      await this.waitForProofServer(projectRoot);
+      await this.waitForProofServer(options.proofServerUrl);
 
       // Step 5: Deploy contract
       console.log();
@@ -89,6 +93,8 @@ export class AutoDeployer {
       await Deployer.deploy(contractName, {
         network: options.network,
         privateKey: seed,
+        legacy: Boolean(options.legacy),
+        proofServerUrl: options.proofServerUrl,
       });
 
       Logger.success('Auto-deploy finished. Exiting.');
@@ -101,7 +107,26 @@ export class AutoDeployer {
   }
 
   // Combined balance check for tNight and DUST
-  private static async checkBalances(seed: string, network: string): Promise<{ balance: bigint; dustBalance: bigint }> {
+  private static async checkBalances(
+    seed: string,
+    walletName: string,
+    network: string,
+    legacy: boolean,
+  ): Promise<{ balance: bigint; dustBalance: bigint }> {
+    if (!legacy) {
+      const syncBalance = await getWalletSyncBalance(walletName);
+      if (!syncBalance) {
+        throw new Error('Walletsync balance is unavailable. Please run "nightforge sync" first, or use --legacy.');
+      }
+
+      console.log(chalk.green('✓') + ` walletsync balance loaded (${syncBalance.alias})`);
+      console.log('\n' + '═'.repeat(80));
+      console.log(`  Balance: ${this.formatBalance(syncBalance.nightBalance, 6)} tNight`);
+      console.log(`  DUST:    ${this.formatBalance(syncBalance.dustBalance, 15)}`);
+      console.log('═'.repeat(80) + '\n');
+      return { balance: syncBalance.nightBalance, dustBalance: syncBalance.dustBalance };
+    }
+
     const config = await ConfigLoader.load();
     const networkConfig = config.networks[network];
     const projectRoot = getProjectRoot();
@@ -194,7 +219,13 @@ export class AutoDeployer {
     return WalletStorage.loadWallet(walletName);
   }
 
-  private static async waitForFunds(seed: string, address: string, network: string): Promise<void> {
+  private static async waitForFunds(
+    seed: string,
+    address: string,
+    walletName: string,
+    network: string,
+    legacy: boolean,
+  ): Promise<void> {
     console.log(chalk.bold.yellow('💰 Waiting for tNight funds...'));
     console.log();
     console.log(chalk.dim('  Your wallet needs tNight tokens to proceed with deployment.'));
@@ -207,6 +238,32 @@ export class AutoDeployer {
     console.log();
     console.log(chalk.dim('  Checking balance every 10 seconds...'));
     console.log();
+
+    if (!legacy) {
+      const spinner = startSpinner('Waiting for funds (walletsync)...');
+      let unavailableChecks = 0;
+
+      while (true) {
+        const syncBalance = await getWalletSyncBalance(walletName);
+        if (syncBalance && syncBalance.nightBalance > 0n) {
+          spinner.succeed(
+            chalk.green('Funds detected! Balance: ') + chalk.cyan(this.formatBalance(syncBalance.nightBalance, 6) + ' tNight')
+          );
+          console.log();
+          return;
+        }
+
+        if (!syncBalance) {
+          unavailableChecks += 1;
+          if (unavailableChecks >= 3) {
+            spinner.warn(chalk.yellow('walletsync unavailable; switching to legacy wait-for-funds flow.'));
+            break;
+          }
+        }
+
+        await this.sleep(10000);
+      }
+    }
 
     const config = await ConfigLoader.load();
     const networkConfig = config.networks[network];
@@ -246,11 +303,64 @@ export class AutoDeployer {
     }
   }
 
-  private static async convertToDust(seed: string, network: string): Promise<void> {
+  private static async convertToDust(seed: string, network: string, walletName: string, legacy: boolean): Promise<void> {
     console.log(chalk.bold.yellow('🔄 Converting tNight to DUST...'));
     console.log();
     console.log(chalk.dim('  DUST tokens are required for contract deployment.'));
     console.log();
+
+    if (!legacy) {
+      const deploySyncState = await getDeploySyncState(walletName);
+      if (deploySyncState.kind !== 'ready') {
+        if (deploySyncState.kind === 'syncing') {
+          throw new Error('Wallet sync is in progress. Please wait 1-2 minutes.');
+        }
+
+        if (deploySyncState.kind === 'unmapped') {
+          throw new Error('Walletsync wallet mapping missing. Please configure the wallet and run sync before deploy.');
+        }
+
+        throw new Error('Walletsync is unavailable. Please run "nightforge sync" first, or use --legacy.');
+      }
+
+      console.log(chalk.green('✓') + ` walletsync deploy state loaded (${deploySyncState.alias})`);
+
+      if (deploySyncState.dustBalance > 0n) {
+        console.log(chalk.green('✓') + ' DUST already available — skipping conversion.');
+        console.log();
+        return;
+      }
+
+      const convertResult = await convertDustViaWalletSync(walletName);
+      if (convertResult.status === 'ok' && convertResult.outcome === 'already-has-dust') {
+        console.log(chalk.green('✓') + ' DUST already available — skipping conversion.');
+        console.log();
+        return;
+      }
+
+      const submitMessage =
+        convertResult.status === 'ok'
+          ? `DUST conversion submitted via walletsync (${convertResult.alias}).`
+          : convertResult.status === 'ambiguous'
+            ? `Walletsync returned: ${convertResult.message}`
+            : convertResult.status === 'syncing'
+              ? 'Wallet sync is in progress. Waiting for DUST confirmation...'
+              : convertResult.status === 'error'
+                ? `Walletsync DUST conversion returned: ${convertResult.message}`
+                : 'Walletsync DUST endpoint unavailable right now. Waiting for confirmation...';
+
+      console.log(chalk.yellow('⚠') + ` ${submitMessage}`);
+      console.log(chalk.dim('  Waiting for DUST confirmation...'));
+
+      const confirmation = await waitForWalletSyncDustBalance(walletName, process.cwd(), 120000, 4000);
+      if (confirmation.status === 'confirmed') {
+        console.log(chalk.green('✓') + ` DUST confirmed: ${this.formatBalance(confirmation.balance.dustBalance, 15)}`);
+        console.log();
+        return;
+      }
+
+      throw new Error(`DUST conversion did not confirm. Last walletsync message: ${submitMessage}`);
+    }
 
     const config = await ConfigLoader.load();
     const networkConfig = config.networks[network];
@@ -279,7 +389,13 @@ export class AutoDeployer {
     }
   }
 
-  private static async waitForProofServer(projectRoot: string): Promise<void> {
+  private static async waitForProofServer(remoteProofServerUrl?: string): Promise<void> {
+    if (remoteProofServerUrl) {
+      console.log(chalk.green('✓') + ` Using remote proof server: ${remoteProofServerUrl}`);
+      console.log();
+      return;
+    }
+
     console.log(chalk.bold.yellow('🔧 Waiting for proof server...'));
     console.log();
     console.log(chalk.dim('  A local proof server is required for deployment.'));

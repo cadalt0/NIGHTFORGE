@@ -6,6 +6,7 @@ This folder contains detailed guides for each Nightforge command, with practical
 
 - [Init Command](./commands/init.md)
 - [Compile Command](./commands/compile.md)
+- [Sync Command](./commands/sync.md)
 - [Wallet Commands](./commands/wallet.md)
 - [Proof Server Commands](./commands/proof-server.md)
 - [PS Alias (`ps`)](./commands/ps.md)
@@ -20,6 +21,7 @@ This folder contains detailed guides for each Nightforge command, with practical
 
 1. [Init Command](./commands/init.md)
 2. [Compile Command](./commands/compile.md)
-3. [Wallet Commands](./commands/wallet.md)
-4. [Proof Server Commands](./commands/proof-server.md)
-5. [Deploy Command](./commands/deploy.md)
+3. [Sync Command](./commands/sync.md)
+4. [Wallet Commands](./commands/wallet.md)
+5. [Proof Server Commands](./commands/proof-server.md)
+6. [Deploy Command](./commands/deploy.md)

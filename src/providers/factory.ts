@@ -13,6 +13,14 @@ export interface Providers {
 }
 
 export class ProviderFactory {
+  private static getPrivateStoragePassword(): string {
+    const fromEnv = process.env.MIDNIGHT_PRIVATE_STATE_PASSWORD?.trim();
+    if (fromEnv && fromEnv.length >= 16) {
+      return fromEnv;
+    }
+    return 'Nightforge#Sync2026';
+  }
+
   private static async getModules() {
     const projectRoot = getProjectRoot();
     ensureProjectDeps(projectRoot);
@@ -110,7 +118,9 @@ export class ProviderFactory {
     return {
       privateStateProvider: levelPrivateStateProvider({
         privateStateStoreName,
+        accountId: walletCtx.address,
         walletProvider,
+        privateStoragePasswordProvider: async () => ProviderFactory.getPrivateStoragePassword(),
       }),
       publicDataProvider: indexerPublicDataProvider(networkConfig.indexer, networkConfig.indexerWS!),
       zkConfigProvider,

@@ -1,1 +1,37 @@
+# Dependencies
 node_modules/
+**/node_modules/
+
+# Build artifacts
+dist/
+**/dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime/generated state
+.midnightwalletsync/
+proof-server-status.json
+deployment.json
+wallet.json
+.cache/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

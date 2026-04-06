@@ -5,6 +5,86 @@ All notable changes to NightForge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7-dev.2] - 2026-04-05
+
+### 🌟 Major Upgrade: Sync-State Onchain Engine
+
+NightForge now runs on a **walletsync-first onchain workflow**.
+
+- **All deploy onchain actions are managed by synced state** where applicable.
+- Readiness, DUST checks, and deploy submission now flow through walletsync by default.
+- This removes repeated direct wallet bootstrapping in the primary path and makes deployment behavior more deterministic.
+
+### ⚡ Performance Impact
+
+- In synced/ready scenarios, the typical user path now moves from roughly **2–3 minutes** to around **3–10 seconds** for readiness + submission flow.
+- Auto mode also avoids unnecessary steps when balance/DUST are already present.
+
+### 🚀 Major Feature Highlights
+
+#### 1) Walletsync-first deploy (default)
+
+- `deploy` now uses synced wallet state for:
+  - balance readiness
+  - DUST readiness
+  - contract deploy submission
+- Better hard-fail gating for unmapped/unavailable/syncing states.
+
+#### 2) Auto deploy upgraded (`AutoDeployer`)
+File: `src/deployer/auto.ts`
+
+- Added pre-check for compiled contract before running auto mode.
+- Added combined `tNight` + `DUST` balance logic.
+- Skips fund/conversion steps when already ready.
+- Uses spinner helpers across wait/convert/deploy steps.
+- Uses wallet base dir for proof server status file.
+- Uses guarded shutdown checks (`shutdown()` checks instead of unconditional close behavior).
+
+#### 3) Sync runtime reliability and control
+
+- Added `nightforge sync --port <port>` support.
+- Sync updates and persists active port in `midnightwalletsync.config.json`:
+  - with `--port`: stores custom port
+  - without `--port`: stores default `8787`
+- Ctrl+C shutdown is now cleaner:
+  - child signal forwarding
+  - reduced orphan processes/port leaks
+  - no fake startup failure messaging on user stop
+- Runtime recovery improved with retry-oriented behavior for transient failures.
+
+#### 4) Proof server alignment
+
+- Proof server status lookup now uses wallet base dir.
+- Runtime prefers local proof server when available.
+- Deploy/proving configuration is aligned with local status source-of-truth.
+- Added explicit deploy remote override:
+  - `nightforge deploy ...` uses local proof-server checks (default behavior)
+  - `nightforge deploy ... --remote <url>` skips local proof-server checks and targets the provided proof server URL directly
+  - Same remote override behavior is supported in auto mode
+
+### ✅ Backward Compatibility
+
+- **Old method still exists** and can be used with `--legacy`.
+- This allows fallback for debugging and gradual migration.
+
+### 🛠️ Minor Updates (last)
+
+#### Deployer and CLI UX polish
+
+- `src/deployer/index.ts`: improved deploy progress UX and status path updates.
+- `src/cli/commands/init.ts`: uses `startSpinner()`.
+- `src/cli/commands/proof-server.ts`: Docker check spinner + wallet-base status location.
+- `src/cli/commands/wallet.ts`: wraps wallet operations with `withSpinner()` where applicable.
+- Improved readable balance formatting and clearer readiness/error messaging.
+
+#### Metadata/version updates
+
+- `package.json`: `0.0.6` → `0.0.7-dev.2`.
+- `README.md`: minor wording update (“proof server”).
+- `package-lock.json`: lockfile refreshed.
+- `.gitignore`: added `node_modules/`.
+- v2 branch includes generated `dist/` artifacts relative to main.
+
 ## [0.0.6] - 2026-03-10
 
 ### 🎯 Major Features

@@ -6,7 +6,9 @@ import { Logger } from '../../utils/logger.js';
 import { ensureProjectDeps, getProjectRoot, importProjectModule } from '../../utils/midnight-loader.js';
 import * as Rx from 'rxjs';
 import { generateReadableName, WalletStorage } from '../../wallet/storage.js';
+import { getDustSyncState } from '../../wallet/dust-sync-state.js';
 import { withSpinner } from '../../utils/cli-spinner.js';
+import { convertDustViaWalletSync, getWalletSyncBalance, probeWalletSyncBalance, waitForWalletSyncDustBalance } from '../../utils/walletsync-client.js';
 
 function formatBalance(balance: bigint, decimals: number = 6): string {
   const divisor = 10n ** BigInt(decimals);
@@ -253,12 +255,42 @@ async function registerForDustIfNeeded(walletCtx: any, askConfirmation: boolean)
   Logger.success('DUST tokens ready!\n');
 }
 
-async function showBalanceFromStorage(walletName: string | undefined, network: string) {
+async function showBalanceFromStorage(walletName: string | undefined, network: string, legacy: boolean = false) {
+  const walletData = getWalletData(walletName);
+
+  if (!legacy) {
+    const syncResult = await probeWalletSyncBalance(walletData.name);
+    if (syncResult.status === 'ok') {
+      const syncBalance = syncResult.balance;
+      Logger.info(`Using walletsync (${syncBalance.alias})`);
+      Logger.log('\n' + '═'.repeat(80));
+      Logger.log(`  Name:    ${walletData.name}`);
+      Logger.log(`  Address: ${syncBalance.unshieldedAddress ?? walletData.address}`);
+      Logger.log(`  Network: ${network}`);
+      Logger.log(`  Balance: ${formatBalance(syncBalance.nightBalance)} tNight`);
+      Logger.log(`  DUST:    ${formatDustBalance(syncBalance.dustBalance)}`);
+      Logger.log('═'.repeat(80) + '\n');
+
+      if (syncBalance.nightBalance > 0n && syncBalance.dustBalance === 0n) {
+        Logger.warn('DUST not found in walletsync snapshot.');
+        Logger.info('Run "npx nightforge wallet dust --legacy" to register DUST from this wallet.');
+      }
+      return;
+    }
+
+    if (syncResult.status === 'syncing') {
+      throw new Error('Wallet sync is in progress. Please wait 1-2 minutes.');
+    }
+
+    throw new Error(
+      'Walletsync is required for "wallet balance". Please run "nightforge sync" first, or use --legacy.'
+    );
+  }
+
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
 
-  const walletData = getWalletData(walletName);
   const config = await ConfigLoader.load();
   const networkConfig = config.networks[network];
 
@@ -284,7 +316,7 @@ async function showBalanceFromStorage(walletName: string | undefined, network: s
     )
   ) as bigint;
 
-  Logger.log('\n═'.repeat(80));
+  Logger.log('\n' + '═'.repeat(80));
   Logger.log(`  Name:    ${walletData.name}`);
   Logger.log(`  Address: ${walletCtx.address}`);
   Logger.log(`  Network: ${network}`);
@@ -312,12 +344,92 @@ async function showBalanceFromStorage(walletName: string | undefined, network: s
   await walletCtx.wallet.stop();
 }
 
-async function convertToDust(walletName: string | undefined, network: string) {
+async function convertToDust(walletName: string | undefined, network: string, legacy: boolean = false) {
+  const walletData = getWalletData(walletName);
+
+  if (!legacy) {
+    const syncState = await getDustSyncState(walletData.name);
+
+    if (syncState.kind === 'ready') {
+      Logger.info(`Using walletsync (${syncState.alias}) for DUST pre-check`);
+
+      if (syncState.nightBalance <= 0n) {
+        Logger.warn('\n⚠️  No balance found. Please fund your wallet first!');
+        Logger.log('💰 Fund your wallet:');
+        Logger.log('   → https://faucet.preprod.midnight.network/\n');
+        return;
+      }
+
+      if (syncState.dustBalance > 0n) {
+        Logger.success(`DUST already available: ${formatDustBalance(syncState.dustBalance)}\n`);
+        return;
+      }
+
+      Logger.info('DUST not found in walletsync snapshot. Requesting DUST conversion via walletsync...');
+      const convertResult = await convertDustViaWalletSync(walletData.name);
+
+      let submitMessage = 'DUST conversion request sent via walletsync.';
+
+      if (convertResult.status === 'ok') {
+        if (convertResult.outcome === 'already-has-dust') {
+          Logger.success(`DUST already available: ${formatDustBalance(convertResult.dustBalance)}\n`);
+          return;
+        }
+
+        if (convertResult.outcome === 'no-eligible-utxos') {
+          Logger.warn('No eligible tNight UTXOs found for DUST registration.');
+          Logger.log('Fund or refresh wallet state, then retry.\n');
+          return;
+        }
+
+        submitMessage = `DUST conversion submitted via walletsync (${convertResult.alias}).`;
+      }
+
+      if (convertResult.status === 'ambiguous') {
+        submitMessage = `Walletsync returned: ${convertResult.message}`;
+      }
+
+      if (convertResult.status === 'syncing') {
+        submitMessage = 'Wallet sync is in progress. Waiting for DUST confirmation...';
+      }
+
+      if (convertResult.status === 'error') {
+        submitMessage = `Walletsync DUST conversion returned: ${convertResult.message}`;
+      }
+
+      if (convertResult.status === 'unavailable') {
+        submitMessage = 'Walletsync DUST endpoint unavailable right now. Waiting for confirmation...';
+      }
+
+      Logger.warn(submitMessage);
+      Logger.info('Waiting for DUST confirmation...');
+
+      const confirmation = await waitForWalletSyncDustBalance(walletData.name, process.cwd(), 120000, 4000);
+      if (confirmation.status === 'confirmed') {
+        Logger.success(`DUST confirmed: ${formatDustBalance(confirmation.balance.dustBalance)}\n`);
+        return;
+      }
+
+      if (confirmation.status === 'timeout') {
+        throw new Error(`DUST conversion did not confirm after waiting. Last walletsync message: ${submitMessage}`);
+      }
+
+      if (confirmation.status === 'unmapped') {
+        throw new Error('Walletsync wallet mapping missing for DUST confirmation.');
+      }
+
+      throw new Error(`DUST conversion did not confirm. Last walletsync message: ${submitMessage}`);
+    } else if (syncState.kind === 'syncing') {
+      throw new Error('Wallet sync is in progress. Please wait 1-2 minutes.');
+    } else {
+      throw new Error('Walletsync is required for "wallet dust". Please run "nightforge sync" first, or use --legacy.');
+    }
+  }
+
   const projectRoot = getProjectRoot();
   ensureProjectDeps(projectRoot);
   const { setNetworkId } = await importProjectModule(projectRoot, 'midnight-js-network-id');
 
-  const walletData = getWalletData(walletName);
   const config = await ConfigLoader.load();
   const networkConfig = config.networks[network];
 
@@ -510,11 +622,12 @@ walletCmd
   .description('Check wallet balance')
   .option('-n, --network <network>', 'Network', 'preprod')
   .option('--name <name>', 'Wallet name (defaults to active wallet)')
+  .option('--legacy', 'Use legacy direct wallet sync flow instead of walletsync service')
   .action(async (options) => {
     Logger.header('Wallet Balance');
 
     try {
-      await showBalanceFromStorage(options.name, options.network);
+      await showBalanceFromStorage(options.name, options.network, Boolean(options.legacy));
     } catch (error) {
       Logger.error('Failed to check balance', error as Error);
       process.exit(1);
@@ -541,11 +654,12 @@ walletCmd
   .description('Convert balance to DUST tokens')
   .option('-n, --network <network>', 'Network', 'preprod')
   .option('--name <name>', 'Wallet name (defaults to active wallet)')
+  .option('--legacy', 'Use legacy direct wallet sync flow instead of walletsync service')
   .action(async (options) => {
     Logger.header('Convert to DUST');
 
     try {
-      await convertToDust(options.name, options.network);
+      await convertToDust(options.name, options.network, Boolean(options.legacy));
     } catch (error) {
       Logger.error('Failed to convert to DUST', error as Error);
       process.exit(1);

@@ -13,9 +13,17 @@ npx nightforge deploy [contract] [options]
 - `-n, --network <network>`: target network (default `preprod`)
 - `-p, --private-key <key>`: deployment seed
 - `-s, --script <path>`: custom deploy script
+- `--remote <url>`: use explicit remote proof server URL
+- `--legacy`: use legacy non-walletsync wallet checks
 - `--auto`: wallet/funding/DUST/proof-server orchestration mode
 
 ## Standard deploy
+
+Standard mode is walletsync-first (unless `--legacy` is passed):
+
+1. Reads wallet readiness from synced wallet state
+2. Requires existing tNIGHT and DUST before deploy
+3. Uses local proof server check by default
 
 ```bash
 npx nightforge deploy <contract-name> --network preprod
@@ -63,10 +71,21 @@ Sample output:
 ✓ Wallet: m1abc...xyz
 ℹ Balance: 12 tNight
 
-─── Step 3: DUST Token Setup ───────────────────────────────
-─── Step 4: Deploying Contract ─────────────────────────────
+─── Step 3: Deploying Contract ─────────────────────────────
 ✓ Contract deployed successfully!
 ✓ Saved deployment info to deployment.json
+```
+
+Use explicit remote proof URL (skips local proof-server readiness lookup):
+
+```bash
+npx nightforge deploy example --remote http://YOUR-PROOF-HOST:6300
+```
+
+Force legacy behavior:
+
+```bash
+npx nightforge deploy example --legacy
 ```
 
 ## Auto deploy (recommended)
@@ -88,6 +107,12 @@ Auto mode handles:
 3. DUST registration/conversion
 4. Proof-server readiness wait
 5. Deployment
+
+Auto mode with remote proof URL:
+
+```bash
+npx nightforge deploy <contract-name> --auto --remote http://YOUR-PROOF-HOST:6300
+```
 
 Sample output:
 
@@ -126,5 +151,6 @@ Resolution order:
 ## Requirements
 
 - Contract must be compiled first
-- Proof server must be running/ready
+- For default local mode, proof server must be running/ready
+- In non-auto walletsync mode, wallet must already have DUST
 - If multiple compiled artifacts exist and no contract name is passed, select one at prompt

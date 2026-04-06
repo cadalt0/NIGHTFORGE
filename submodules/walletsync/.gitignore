@@ -1,0 +1,8 @@
+node_modules/
+.midnightwalletsync/
+.env
+logs/
+dist/
+coverage/
+*.log
+*.tsbuildinfo

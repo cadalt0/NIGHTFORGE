@@ -49,6 +49,8 @@ export interface DeployOptions {
   script?: string;
   privateKey?: string;
   wallet?: string;
+  legacy?: boolean;
+  proofServerUrl?: string;
 }
 
 export interface CompileOptions {

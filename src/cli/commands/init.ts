@@ -31,6 +31,29 @@ function runInstall(cwd: string): Promise<{ code: number; stderr: string }> {
   });
 }
 
+function runNpx(cwd: string, args: string[]): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('npx', args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+    });
+
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('close', (code) => {
+      resolve({ code: code ?? 1, stderr });
+    });
+
+    child.on('error', (error) => {
+      resolve({ code: 1, stderr: error.message });
+    });
+  });
+}
+
 const configTemplate = `const config = {
   networks: {
     preprod: {
@@ -53,7 +76,7 @@ export default config;
 `;
 
 const contractTemplate = `// Hello World Compact contract
-pragma language_version 0.21;
+pragma language_version 0.22;
 
 // Public on-chain state
 export ledger message: Bytes<11>;
@@ -149,6 +172,9 @@ export const initCommand = new Command('init')
           compile: 'npx nightforge compile',
           deploy: 'npx nightforge deploy',
           'proof-server': 'npx nightforge proof-server',
+          'sync:init': 'npx nightforge sync --init',
+          sync: 'npx nightforge sync',
+          'sync:status': 'npx nightforge sync --status',
           forge: 'nightforge'
         },
         devDependencies: {
@@ -157,26 +183,33 @@ export const initCommand = new Command('init')
           'typescript': '^5.9.3',
         },
         dependencies: {
-          '@midnight-ntwrk/compact-runtime': '0.14.0',
-          '@midnight-ntwrk/compact-js': '2.4.0',
-          '@midnight-ntwrk/ledger': '^4.0.0',
-          '@midnight-ntwrk/ledger-v7': '7.0.0',
-          '@midnight-ntwrk/midnight-js-contracts': '3.0.0',
-          '@midnight-ntwrk/midnight-js-http-client-proof-provider': '3.0.0',
-          '@midnight-ntwrk/midnight-js-indexer-public-data-provider': '3.0.0',
-          '@midnight-ntwrk/midnight-js-level-private-state-provider': '3.0.0',
-          '@midnight-ntwrk/midnight-js-network-id': '3.0.0',
-          '@midnight-ntwrk/midnight-js-node-zk-config-provider': '3.0.0',
-          '@midnight-ntwrk/midnight-js-types': '3.0.0',
-          '@midnight-ntwrk/midnight-js-utils': '^3.1.0',
-          '@midnight-ntwrk/wallet-sdk-address-format': '3.0.0',
-          '@midnight-ntwrk/wallet-sdk-dust-wallet': '1.0.0',
-          '@midnight-ntwrk/wallet-sdk-facade': '1.0.0',
-          '@midnight-ntwrk/wallet-sdk-hd': '3.0.0',
-          '@midnight-ntwrk/wallet-sdk-shielded': '1.0.0',
-          '@midnight-ntwrk/wallet-sdk-unshielded-wallet': '1.0.0',
-          'rxjs': '^7.8.2',
-          'ws': '^8.19.0',
+          '@scure/bip39': '2.0.1',
+          '@midnight-ntwrk/compact-runtime': '0.15.0',
+          '@midnight-ntwrk/compact-js': '2.5.0',
+          '@midnight-ntwrk/ledger': '4.0.0',
+          '@midnight-ntwrk/ledger-v7': '7.0.3',
+          '@midnight-ntwrk/ledger-v8': '8.0.3',
+          '@midnight-ntwrk/midnight-js-contracts': '4.0.4',
+          '@midnight-ntwrk/midnight-js-http-client-proof-provider': '4.0.4',
+          '@midnight-ntwrk/midnight-js-indexer-public-data-provider': '4.0.4',
+          '@midnight-ntwrk/midnight-js-level-private-state-provider': '4.0.4',
+          '@midnight-ntwrk/midnight-js-network-id': '4.0.4',
+          '@midnight-ntwrk/midnight-js-node-zk-config-provider': '4.0.4',
+          '@midnight-ntwrk/midnight-js-types': '4.0.4',
+          '@midnight-ntwrk/midnight-js-utils': '4.0.4',
+          '@midnight-ntwrk/testkit-js': '4.0.4',
+          '@midnight-ntwrk/wallet-sdk-address-format': '3.1.0',
+          '@midnight-ntwrk/wallet-sdk-dust-wallet': '3.0.0',
+          '@midnight-ntwrk/wallet-sdk-facade': '3.0.0',
+          '@midnight-ntwrk/wallet-sdk-hd': '3.0.1',
+          '@midnight-ntwrk/wallet-sdk-shielded': '2.1.0',
+          '@midnight-ntwrk/wallet-sdk-unshielded-wallet': '2.1.0',
+          'axios': '1.14.0',
+          'pino': '10.3.1',
+          'pino-pretty': '13.1.3',
+          'rxjs': '7.8.2',
+          'testcontainers': '11.13.0',
+          'ws': '8.20.0',
         },
       };
       FileSystem.writeJSON(path.join(projectPath, 'package.json'), packageJson);
@@ -198,6 +231,19 @@ export const initCommand = new Command('init')
 
         if (result.code === 0) {
           installSpinner.succeed('Dependencies installed');
+
+          const syncInitSpinner = startSpinner('Setting up walletsync...');
+          const syncInitResult = await runNpx(projectPath, ['nightforge', 'sync', '--init']);
+          if (syncInitResult.code === 0) {
+            syncInitSpinner.succeed('Walletsync initialized');
+          } else {
+            syncInitSpinner.warn('Walletsync setup skipped');
+            if (process.env.DEBUG) {
+              const stderr = syncInitResult.stderr?.trim();
+              if (stderr) Logger.log(stderr);
+            }
+            Logger.warn('Run "npx nightforge sync --init" inside project to finish walletsync setup.');
+          }
         } else {
           installSpinner.fail('Auto-install failed');
           if (process.env.DEBUG) {
@@ -206,6 +252,10 @@ export const initCommand = new Command('init')
           }
           Logger.warn('Auto-install failed. Run "npm install" inside project.');
         }
+      }
+
+      if (!options.install) {
+        Logger.info('After npm install, run "npx nightforge sync --init" once before "nightforge sync".');
       }
 
       Logger.section('Project Created!');
